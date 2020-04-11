@@ -4,6 +4,7 @@ import 'dart:io' show Platform;
 import 'dart:math';
 
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -114,6 +115,12 @@ class PinCodeTextField extends StatefulWidget {
   /// Auto dismiss the keyboard upon inputting the value for the last field Default is [true]
   final bool autoDismissKeyboard;
 
+  /// Auto dispose [focusNode]. Default is [true].
+  final bool autoDisposeFocusNode;
+
+  /// Auto dispose [controller]. Default is [true].
+  final bool autoDisposeController;
+
   /// Configures how the platform keyboard will select an uppercase or lowercase keyboard.
   /// Only supports text keyboards, other keyboard types will ignore this configuration. Capitalization is locale-aware.
   /// - Copied from 'https://api.flutter.dev/flutter/services/TextCapitalization-class.html'
@@ -126,6 +133,7 @@ class PinCodeTextField extends StatefulWidget {
       {Key key,
       @required this.length,
       this.controller,
+      this.autoDisposeController = true,
       this.obsecureText = false,
       @required this.onChanged,
       this.onCompleted,
@@ -146,6 +154,7 @@ class PinCodeTextField extends StatefulWidget {
       this.textInputType = TextInputType.visiblePassword,
       this.autoFocus = false,
       this.focusNode,
+      this.autoDisposeFocusNode = true,
       this.enabled = true,
       this.inputFormatters = const <TextInputFormatter>[],
       this.dialogContent = "Do you want to paste this code ",
@@ -188,12 +197,16 @@ class _PinCodeTextFieldState extends State<PinCodeTextField> {
       borderRadius = widget.borderRadius;
     }
     _focusNode = widget.focusNode ?? FocusNode();
-    _focusNode.addListener(() {
-      setState(() {});
-    }); // Rebuilds on every change to reflect the correct color on each field.
+    _focusNode.addListener(_processFocusChange); // Rebuilds on every change to reflect the correct color on each field.
     _inputList = List<String>(widget.length);
     _initializeValues();
     super.initState();
+  }
+
+  void _processFocusChange() {
+    if(mounted){
+      setState(() {});
+    }
   }
 
   // validating all the values
@@ -233,36 +246,44 @@ class _PinCodeTextFieldState extends State<PinCodeTextField> {
     } else {
       _textEditingController = widget.controller;
     }
-    _textEditingController.addListener(() {
-      var currentText = _textEditingController.text;
+    _textEditingController.addListener(_processTextChange);
+  }
 
-      if (widget.enabled && _inputList.join("") != currentText) {
-        if (currentText.length >= widget.length) {
-          if (widget.onCompleted != null) {
-            if (currentText.length > widget.length) {
-              // removing extra text longer than the length
-              currentText = currentText.substring(0, widget.length);
-            }
-            //  delay the onComplete event handler to give the onChange event handler enough time to complete
-            Future.delayed(Duration(milliseconds: 300), () => widget.onCompleted(currentText));
+  void _processTextChange() {
+    var currentText = _textEditingController.text;
+
+    if (widget.enabled && _inputList.join("") != currentText) {
+      if (currentText.length >= widget.length) {
+        if (widget.onCompleted != null) {
+          if (currentText.length > widget.length) {
+            // removing extra text longer than the length
+            currentText = currentText.substring(0, widget.length);
           }
+          //  delay the onComplete event handler to give the onChange event handler enough time to complete
+          Future.delayed(Duration(milliseconds: 300), () => widget.onCompleted(currentText));
+        }
 
-          if (widget.autoDismissKeyboard) _focusNode.unfocus();
-        }
-        if (widget.onChanged != null) {
-          widget.onChanged(currentText);
-        }
+        if (widget.autoDismissKeyboard) _focusNode.unfocus();
       }
+      if (widget.onChanged != null) {
+        widget.onChanged(currentText);
+      }
+    }
 
-      _setTextToInput(currentText);
-    });
+    _setTextToInput(currentText);
   }
 
   @override
   void dispose() {
-    print("*** Disposing _textEditingController and _focusNode for pin code field ***");
-    _textEditingController.dispose();
-    _focusNode.dispose();
+    if (kDebugMode) print("*** Disposing _textEditingController and _focusNode for pin code field ***");
+    _textEditingController.removeListener(_processTextChange);
+    if (widget.autoDisposeController) {
+      _textEditingController.dispose();
+    }
+    _focusNode.removeListener(_processFocusChange);
+    if (widget.autoDisposeFocusNode) {
+      _focusNode.dispose();
+    }
     super.dispose();
   }
 
